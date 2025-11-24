@@ -340,7 +340,7 @@ def get_observation_summary(sat_dict: Dict[str, pd.DataFrame]) -> pd.DataFrame:
 
 if __name__ == "__main__":
     # Test
-    test_file = "../Data/tehn2580.21o"
+    test_file = "../GODS00USA_R_20240010000_01D_GN.rnx"
     
     if os.path.exists(test_file):
         sat_dict = read_rinex(test_file, systems='G')
