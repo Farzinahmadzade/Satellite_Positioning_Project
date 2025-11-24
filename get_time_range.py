@@ -36,3 +36,22 @@ def get_time_range(sat_data_dict: Dict[str, pd.DataFrame], prn: str) -> Tuple[pd
     start_time = df['time'].min()
     end_time = df['time'].max()
     return start_time, end_time
+
+
+if __name__ == "__main__":
+    # Example usage (replace sat_dict with actual output from read_rinex)
+    import pandas as pd
+    from datetime import datetime
+
+    # Mock example for testing
+    mock_data = {
+        'G05': pd.DataFrame({
+            'time': pd.date_range(start='2025-11-24 00:00:00', periods=5, freq='30S'),
+            'L1': [1, 2, 3, 4, 5],
+            'L2': [1, 2, 3, 4, 5],
+            'C1': [1, 2, 3, 4, 5],
+            'C2': [1, 2, 3, 4, 5],
+        })
+    }
+    start, end = get_time_range(mock_data, 'G05')
+    print(f"Start time: {start}, End time: {end}")
