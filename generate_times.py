@@ -5,7 +5,7 @@ Description:
 Generates a list of sampling times at fixed intervals within a given start and end time.
 Useful for creating time steps at which satellite positions are computed.
 
-Author: Your Name
+Author: F.Ahmadzade
 """
 
 from typing import List
