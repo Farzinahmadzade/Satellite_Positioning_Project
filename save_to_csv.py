@@ -31,3 +31,18 @@ def save_to_csv(position_data: Dict[str, any],
 
     df.to_csv(filename, index=False)
     print(f"Position data saved to {filename}")
+
+if __name__ == "__main__":
+    # Example usage
+    import numpy as np
+    import pandas as pd
+    
+    # Create dummy data
+    positions = {
+        'X': np.linspace(0, 10000, 10),
+        'Y': np.linspace(0, 5000, 10),
+        'Z': np.linspace(1000, 15000, 10)
+    }
+    times = pd.date_range(start='2025-11-24 00:00:00', periods=10, freq='30S')
+    
+    save_to_csv(positions, 'satellite_positions.csv', times)
