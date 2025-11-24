@@ -1,0 +1,5 @@
+georinex
+pandas
+numpy
+matplotlib
+scipy
