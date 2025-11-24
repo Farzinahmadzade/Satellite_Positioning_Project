@@ -145,7 +145,7 @@ def add_time_gaps(df: pd.DataFrame, threshold_sec: float = 30.0) -> pd.DataFrame
 
 def validate_observation_pair(df: pd.DataFrame, sat_id: str) -> Tuple[bool, str]:
     """
-    Validate presence and completeness of observation pairs required (L1/L2 & C1/C2).
+    Validate presence and completeness of observation pairs (accept if phase OR code pairs available and sufficient).
 
     Returns:
         Tuple of validation result (bool) and message.
@@ -156,28 +156,25 @@ def validate_observation_pair(df: pd.DataFrame, sat_id: str) -> Tuple[bool, str]
     has_phase = all(col in df.columns for col in required_phase)
     has_code = all(col in df.columns for col in required_code)
 
-    if has_phase and has_code:
-        l1_valid = df['L1'].notna().sum() / len(df)
-        l2_valid = df['L2'].notna().sum() / len(df)
-        c1_valid = df['C1'].notna().sum() / len(df)
-        c2_valid = df['C2'].notna().sum() / len(df)
+    l1_valid = df['L1'].notna().sum() / len(df) if 'L1' in df.columns else 0
+    l2_valid = df['L2'].notna().sum() / len(df) if 'L2' in df.columns else 0
+    c1_valid = df['C1'].notna().sum() / len(df) if 'C1' in df.columns else 0
+    c2_valid = df['C2'].notna().sum() / len(df) if 'C2' in df.columns else 0
 
-        if l1_valid < 0.5 or l2_valid < 0.5:
-            return False, f"Low phase completeness (L1:{l1_valid:.1%}, L2:{l2_valid:.1%})"
+    if (has_phase and l1_valid >= 0.5 and l2_valid >= 0.5) or (has_code and c1_valid >= 0.5 and c2_valid >= 0.5):
         return True, "Valid"
     else:
-        missing = []
-        if not has_phase:
-            missing_phase = [p for p in required_phase if p not in df.columns]
-            missing.append(f"Phase: {missing_phase}")
-        if not has_code:
-            missing_code = [c for c in required_code if c not in df.columns]
-            missing.append(f"Code: {missing_code}")
-        return False, f"Missing observations - {', '.join(missing)}"
+        missing_msgs = []
+        if not has_phase or l1_valid < 0.5 or l2_valid < 0.5:
+            missing_msgs.append(f"Phase completeness (L1: {l1_valid:.1%}, L2: {l2_valid:.1%})")
+        if not has_code or c1_valid < 0.5 or c2_valid < 0.5:
+            missing_msgs.append(f"Code completeness (C1: {c1_valid:.1%}, C2: {c2_valid:.1%})")
+        return False, "Missing or insufficient observations - " + " & ".join(missing_msgs)
+
 
 def read_rinex(obs_file: str,
                systems: Optional[str] = None,
-               min_epochs: int = 10,
+               min_epochs: int = 3,
                detect_gaps: bool = True,
                gap_threshold: float = 30.0,
                verbose: bool = True) -> Dict[str, pd.DataFrame]:
