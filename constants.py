@@ -47,7 +47,6 @@ GLONASS_K = {
     'R19': 3,  'R20': 2,  'R21': 4,  'R22': -3, 'R23': 3,  'R24': 2
 }
 
-
 def get_glonass_frequencies(sat_id: str) -> tuple:
     """
     Get GLONASS frequencies for a specific satellite.
@@ -72,7 +71,6 @@ def get_glonass_frequencies(sat_id: str) -> tuple:
     alpha = (F1 / F2) ** 2
     
     return F1, F2, L1, L2, alpha
-
 
 def get_frequencies(sat_system: str, sat_id: str = None) -> dict:
     """
@@ -120,8 +118,7 @@ def get_frequencies(sat_system: str, sat_id: str = None) -> dict:
             'alpha': ALPHA_GPS
         }
 
-
-# Print loaded constants
+# Confirmation print
 print(f"✓ Constants loaded:")
 print(f"  GPS: F1={F1_GPS:.2f} MHz, F2={F2_GPS:.2f} MHz, λ1={GPS_L1:.4f} m, λ2={GPS_L2:.4f} m")
 print(f"  Alpha (GPS): {ALPHA_GPS:.4f}")
