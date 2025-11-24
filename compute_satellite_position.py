@@ -5,12 +5,11 @@ Description:
 Calculates satellite position in Earth-Centered Earth-Fixed (ECEF) coordinates using
 orbital parameters interpolated at specific times.
 
-Author: F.ahmadzade
+Author: F.Ahmadzade
 """
 
-from typing import Dict, List
+from typing import Dict
 import numpy as np
-import pandas as pd
 
 def compute_satellite_position(orbital_params: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
     """
@@ -18,48 +17,49 @@ def compute_satellite_position(orbital_params: Dict[str, np.ndarray]) -> Dict[st
 
     Args:
         orbital_params (Dict[str, np.ndarray]): Dictionary of interpolated orbital parameters.
-          Expected keys (as an example, adjust based on your navigation parameters):
-          ['sqrtA', 'e', 'i0', 'omega', 'OMEGA', 'M0', 'delta_n', 'OMEGA_DOT', 'IDOT']
+            Expected keys:
+            ['sqrtA', 'e', 'i0', 'omega', 'OMEGA', 'M0', 'delta_n', 'OMEGA_DOT', 'IDOT', 'tk']
+
+            'tk' is the time difference array in seconds from ephemeris reference epoch.
 
     Returns:
         Dict[str, np.ndarray]: Dictionary with keys 'X', 'Y', 'Z' containing satellite ECEF coordinates.
     """
-    # Extract parameters (example names, should be adapted)
+
+    # Extract parameters
     sqrtA = orbital_params.get('sqrtA')
     e = orbital_params.get('e')
     i0 = orbital_params.get('i0')
     omega = orbital_params.get('omega')       # Argument of perigee
-    OMEGA = orbital_params.get('OMEGA')       # Longitude of ascending node
+    OMEGA = orbital_params.get('OMEGA')       # Longitude of ascending node at reference time
     M0 = orbital_params.get('M0')             # Mean anomaly at reference time
     delta_n = orbital_params.get('delta_n')   # Mean motion difference
     OMEGA_DOT = orbital_params.get('OMEGA_DOT') # Rate of right ascension
     IDOT = orbital_params.get('IDOT')          # Rate of inclination angle
+    tk = orbital_params.get('tk')              # Time from ephemeris reference epoch (seconds)
 
     # Number of epochs
     n = len(sqrtA)
 
-    # Constants
-    mu = 3.986005e14  # Earth's universal gravitational parameter (m^3/s^2)
+    # Earth's universal gravitational parameter (m^3/s^2)
+    mu = 3.986005e14
 
     # Compute semi-major axis
     A = sqrtA**2
 
-    # Calculate corrected mean motion
-    n0 = np.sqrt(mu / (A**3))  # Computed mean motion
+    # Computed mean motion (rad/s)
+    n0 = np.sqrt(mu / (A**3))
+
+    # Corrected mean motion
     n_corr = n0 + delta_n
 
-    # Time since ephemeris reference epoch
-    # We assume input orbital_params have corresponding time vector indexed in same order;
-    # Here M0 corresponds to epoch reference, so time t - toe is embedded in M via M = M0 + n_corr * (t - toe)
-    
-    # For now, we calculate mean anomaly linearly (the precise time offset might be needed depending on parameters)
-    # This function assumes M contains the argument M0 + corrected n * t, so it is ready to be used. 
-    M = M0  # If not, user should supply M updated before calling or we add a time vector.
+    # Mean anomaly at time tk
+    M = M0 + n_corr * tk
+
+    # Normalize M within 0 to 2*pi
+    M = np.mod(M, 2 * np.pi)
 
     # Solve Kepler's Equation for Eccentric Anomaly E by iterative method
-    def kepler_eq(E, M, e):
-        return E - e*np.sin(E) - M
-
     def kepler_solver(M_i, e_i, tol=1e-12, max_iter=100):
         E = M_i  # Initial guess
         for _ in range(max_iter):
@@ -73,7 +73,7 @@ def compute_satellite_position(orbital_params: Dict[str, np.ndarray]) -> Dict[st
 
     E = np.array([kepler_solver(M[i], e[i]) for i in range(n)])
 
-    # True Anomaly
+    # True Anomaly v
     sin_v = (np.sqrt(1 - e**2) * np.sin(E)) / (1 - e * np.cos(E))
     cos_v = (np.cos(E) - e) / (1 - e * np.cos(E))
     v = np.arctan2(sin_v, cos_v)
@@ -81,15 +81,14 @@ def compute_satellite_position(orbital_params: Dict[str, np.ndarray]) -> Dict[st
     # Argument of Latitude u
     u = v + omega
 
-    # Corrected radius
+    # Radius r
     r = A * (1 - e * np.cos(E))
 
-    # Corrected inclination
-    i = i0 + IDOT * np.arange(n)  # If time not provided, use index as proxy; better with exact time steps
+    # Inclination i corrected
+    i = i0 + IDOT * tk
 
-    # Corrected longitude of ascending node
-    # Similarly, a time vector can be used for precise calculation; here simplified as:
-    Omega = OMEGA + OMEGA_DOT * np.arange(n)
+    # Longitude of ascending node corrected
+    Omega = OMEGA + (OMEGA_DOT - 7.2921151467e-5) * tk  # Earth rotation rate subtracted
 
     # Satellite position in orbital plane
     x_orb = r * np.cos(u)
