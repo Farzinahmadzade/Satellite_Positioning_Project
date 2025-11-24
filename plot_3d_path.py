@@ -36,3 +36,14 @@ def plot_3d_path(position_data: Dict[str, any], title: str = "Satellite 3D Path"
     ax.set_title(title)
     ax.legend()
     plt.show()
+
+if __name__ == "__main__":
+    # Example usage
+    import numpy as np
+    
+    pos_data = {
+        'X': np.linspace(0, 10000, 100),
+        'Y': np.sin(np.linspace(0, 10, 100)) * 10000,
+        'Z': np.cos(np.linspace(0, 10, 100)) * 10000
+    }
+    plot_3d_path(pos_data, "Example Satellite Orbit Path")
