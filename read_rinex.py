@@ -1,5 +1,5 @@
 """
-RINEX Observation File Reader - Robust & Generic Version
+RINEX Observation File Reader
 --------------------------------------------------------
 Works with RINEX 2.x, 3.x, 4.x
 Handles missing data, multiple observation types, all GNSS systems
