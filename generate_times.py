@@ -2,8 +2,8 @@
 Module: generate_times.py
 
 Description:
-Generates a list of sampling times at fixed intervals within a given start and end time.
-Useful for creating time steps at which satellite positions are computed.
+Generates a list of sampling times at fixed intervals within a specified start and end time.
+Useful for creating time steps at which satellite positions are computed, especially in orbital computations.
 
 Author: F.Ahmadzade
 """
@@ -25,10 +25,20 @@ def generate_times(start_time: pd.Timestamp, end_time: pd.Timestamp, interval_se
     """
     if start_time > end_time:
         raise ValueError("start_time must be less than or equal to end_time")
-
+    
     times = []
     current = start_time
     while current <= end_time:
         times.append(current)
         current += pd.Timedelta(seconds=interval_sec)
+    
     return times
+
+if __name__ == "__main__":
+    # Example usage:
+    start = pd.Timestamp("2025-11-24 00:00:00")
+    end = pd.Timestamp("2025-11-24 01:00:00")
+    times = generate_times(start, end, 30)
+    print("Generated times:")
+    for t in times:
+        print(t)
