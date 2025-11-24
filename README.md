@@ -1,107 +1,104 @@
 # Satellite Positioning Project
 
 ## Overview
-This project computes and visualizes the three-dimensional trajectory of GNSS satellites (focusing on GPS) using RINEX navigation and observation files with a robust Python workflow. The pipeline extracts and sanitizes satellite ephemeris and observation data, interpolates navigation parameters, calculates ECEF positions at regular intervals, and outputs both tabular and visual results.
+
+This project computes and visualizes the three-dimensional trajectory of GNSS satellites (focusing on GPS) using RINEX navigation and observation files with a robust Python workflow. The pipeline extracts and sanitizes satellite ephemeris and observation data, interpolates navigation parameters, calculates ECEF positions at regular intervals, and outputs both tabular and visual results. The implementation is meant to serve academic research, engineering analysis, and as a model pipeline for satellite orbit processing.
 
 ---
 
 ## Project Objectives
 
 - Robust parsing of RINEX navigation/observation files (supports RINEX 2/3/4 and multiple GNSS constellations)
-- Interpolates orbital parameters and computes ECEF satellite positions at custom time steps
-- Produces analyzable CSV output and a 3D orbit visualization
-- Handles incomplete dataset scenarios via documented data recovery for navigation files
+- Interpolate orbital parameters and compute ECEF (Earth-Centered, Earth-Fixed) satellite positions at custom time steps
+- Produce analyzable CSV output and interactive 3D orbit visualization
+- Handle incomplete dataset scenarios (including navigation file download and data recovery)
+- Enforce professional code hygiene, modular structure, and reproducible scientific results
 
 ---
 
 ## Used Libraries and Packages
 
-- **georinex**: Parsing and processing RINEX navigation/observation files ([readthedocs](https://georinex.readthedocs.io))
-- **pandas**: Data management and manipulation for tabular/temporal satellite data
-- **numpy**: Efficient matrix and numerical calculations
-- **scipy.interpolate**: Advanced interpolation for parameter mapping and smoothing
-- **matplotlib**: Visualization, including 3D plotting of computed satellite paths
+- **georinex**: Parsing and processing RINEX navigation/observation files ([readthedocs](https://georinex.readthedocs.io/))
+- **pandas**: Data management, manipulation, and time-series handling ([docs](https://pandas.pydata.org/docs/))
+- **numpy**: Efficient matrix operations and math functions ([docs](https://numpy.org/))
+- **matplotlib**: Visualization, including 3D plotting of computed satellite paths ([docs](https://matplotlib.org/))
+- **scipy.interpolate**: Advanced interpolation (linear, spline) for parameter mapping and data continuity ([docs](https://docs.scipy.org/doc/scipy/reference/interpolate.html))
 
 ---
 
-## Module Structure and Function
+## Module Structure and Functionality
 
-| Module/File                       | Description                                                                                       |
-|------------------------------------|---------------------------------------------------------------------------------------------------|
-| `main.py`                         | Controls pipeline, data flow, reporting, and visualization                                        |
-| `read_navigation.py`               | Parses navigation file, extracts & validates satellite ephemeris parameters                       |
-| `read_rinex.py`                    | Reads the observation file, validates epoch completeness, handles multiple GNSS systems           |
-| `generate_times.py`                | Creates fixed-interval time sequence for sampling observations                                    |
-| `get_time_range.py`                | Extracts observation timespan for the chosen satellite                                            |
-| `interpolate_orbital_params.py`    | Interpolates navigation parameters for all sample epochs using scipy routines                     |
-| `compute_satellite_position.py`    | Calculates positions in ECEF coordinates via GNSS orbital mechanics                              |
-| `plot_3d_path.py`                  | Generates 3D visualization of the satellite’s computed trajectory                                |
-| `save_to_csv.py`                   | Exports computed positions and timestamps to a CSV file                                           |
-| `constants.py`                     | GNSS physical constants: carrier frequencies, wavelengths, and standard coefficients              |
+| Module/File                   | Description                                                                                       |
+|-------------------------------|---------------------------------------------------------------------------------------------------|
+| `main.py`                     | Pipeline orchestrator: runs loading, interpolation, computation, saving, visualization            |
+| `read_navigation.py`          | Reads navigation file; extracts, cleans and validates satellite ephemeris parameters              |
+| `read_rinex.py`               | Reads the observation file, validates completeness/gaps for satellites, RINEX version compatibility|
+| `generate_times.py`           | Creates fixed-interval time sequence for sampling observations                                    |
+| `get_time_range.py`           | Extracts the observation time window for the target satellite                                     |
+| `interpolate_orbital_params.py`| Interpolates ephemeris parameters for target epochs using scipy routines                         |
+| `compute_satellite_position.py`| Calculates ECEF positions for the satellite using orbital mechanics                              |
+| `plot_3d_path.py`             | Produces 3D visualization of the computed trajectory                                              |
+| `save_to_csv.py`              | Exports results (X, Y, Z, time) to CSV for GIS/scientific analysis                               |
+| `constants.py`                | GNSS constants (frequencies, wavelengths, coefficients), multi-system support                    |
 
 ---
 
-## Project Progression
+## Project Progression (Development Roadmap)
 
 1. **Initial Assessment**
-    - Started with just an observation file, realizing navigation/ephemeris data is essential for position computation.
-    - Manual download of the matching navigation file (`brdc2580.21n`) solved the dataset completeness.
-2. **Parser Development**
-    - Built flexible modules handling edge-cases, RINEX version differences, and multi-system support.
-    - Added mapping and fallbacks for parameter naming inconsistencies.
-3. **Refinement and Debugging**
-    - Addressed frequent issues with missing/invalid values, type mismatches (`NoneType`, NaN, float/string conversion).
-    - Cleaned ephemeris data before computation to guarantee downstream reliability.
-    - Incorporated error handling for gaps, incomplete satellites, and data sanitation.
+   - Started with an observation file only. Ephemeris data was found essential for orbit reconstruction, so a navigation file (`brdc2580.21n`) was manually downloaded.
+2. **Flexible Parser Design**
+   - Wrote modular parsers for RINEX navigation/observation, covering edge cases like missing values and version inconsistencies.
+3. **Type Safety & Data Cleaning**
+   - Repeated refactoring to sanitize incoming data (handling None, NaN, float/string conversion), ensuring bug-free downstream computations.
+   - Added checks/gaps, fallback logic for incomplete field availability.
 4. **Pipeline Integration**
-    - Linked navigation data with observation epochs for satellites present in both files.
-    - Implemented sampled time generation and parameter interpolation.
-5. **Computation and Output**
-    - ECEF position calculations verified for correctness, output format made analysis-ready (CSV + 3D plot).
-    - Path visualization matched expected GPS satellite trajectory.
-6. **Documentation and Professionalization**
-    - English documentation and comments throughout the codebase.
-    - Comprehensive README drafted with all modules, rationales, references, and instructions.
+   - Linked navigation/observation for common satellites, generated sample time intervals, and parameter interpolation routines.
+5. **Output & Validation**
+   - ECEF positions computed, results verified, output in science-ready CSV format and visualized as a 3D plot.
+6. **Documentation**
+   - Codebase fully documented in English, with professional comments and clean design.
+   - README written with detailed workflow, module breakdowns, and clear user instructions.
 
 ---
 
-## How To Use
+## Usage Instructions
 
-1. Put navigation (`*.21n`) and observation (`*.21o`) files into your `Data/` directory.
-2. Specify PRN and file paths in `main.py`.
-3. Install dependencies as listed above.
-4. Run using `python main.py`.
-5. Results: output CSV file and interactive 3D orbit plot.
-6. If navigation file is missing, download the file corresponding to your observation dates and GNSS system.
+1. Place your RINEX navigation (`*.21n`) and observation (`*.21o`) files in the `Data/` directory.
+2. Specify PRN and data file paths in `main.py`.
+3. Install Python dependencies listed above (`pip install georinex pandas numpy matplotlib scipy`).
+4. Run `python main.py`.
+5. Results are saved to `output_satellite_positions.csv` and visualized as a 3D orbit.
+6. If navigation file is missing, download the appropriate file for your epoch/system from a public GNSS database.
 
 ---
 
 ## Example Outputs
 
-- **Output CSV**: Contains time and (X, Y, Z) ECEF coordinates
-- **3D Plot**: Visualizes the computed satellite orbit
+- **Output CSV**: Columns for time and (X, Y, Z) ECEF coordinates
+- **3D Plot**: Visualizes the computed satellite orbit (see `/screenshots/` for references)
 
 ---
 
-## References
+## References & Further Reading
 
-- georinex documentation: [https://georinex.readthedocs.io](https://georinex.readthedocs.io)[web:15]
-- GPS/GNSS/RINEX documentation and format specs
-- Matplotlib, pandas, numpy official documentation
-- جزوه تعیین موقعیت پیشرفته، دکتر سعید فرزانه (دانشگاه تهران)
-- سامانه‌های تعیین موقعیت ماهواره‌ای در مهندسی نقشه‌برداری [web:24]
-- "معرفی و دانلود کتاب نقشه برداری به روش تعیین موقعیت ماهواره‌ای" (هوبرت جان لیکرکرک - ترجمه فارسی) [web:22]
-- See related reference templates for scientific README at [Cornell Data Services](https://data.research.cornell.edu/data-management/sharing/readme/) [web:15]
-- GNSS physical principles — Raymand GNSS knowledge [web:29]
+- georinex documentation: [https://georinex.readthedocs.io](https://georinex.readthedocs.io/)
+- RINEX, GNSS, GPS format documentation and standards
+- [Matplotlib](https://matplotlib.org/) | [Pandas](https://pandas.pydata.org/docs/) | [Numpy](https://numpy.org/) | [Scipy Interpolation](https://docs.scipy.org/doc/scipy/reference/interpolate.html)
+- "جزوه تعیین موقعیت پیشرفته" (Advanced Positioning Course), دکتر سعید فرزانه، دانشگاه تهران
+- "سامانه‌های تعیین موقعیت ماهواره‌ای در مهندسی نقشه‌برداری"
+- "معرفی و دانلود کتاب نقشه برداری به روش تعیین موقعیت ماهواره‌ای"، هوبرت جان لیکرکرک، ترجمه فارسی
+- Cornell Data Services: [Writing READMEs for Research Data](https://data.research.cornell.edu/data-management/sharing/readme/)
+- GNSS fundamentals and practical knowledge — Raymand GNSS
+- Additional online technical documentation standards
 
 ---
 
-## Maintainer
+## Author & Maintainer
 
 Author: F.Ahmadzade  
-Contact: [farzinahmadzade@ut.ac.ir]
-         [farzinahmadzade909@gmail.com]
+Contact: [farzinahmadzade@ut.ac.ir] | [farzinahmadzade909@gmail.com]
+
 ---
 
-If you use or modify this project, please cite this README and referenced material. For improvements or bugs, open an issue or contact the author.
-
+If you use or adapt this project, please cite this README and referenced material. For questions, improvements or bugs, open an issue or contact the author directly.
