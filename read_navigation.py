@@ -1,5 +1,5 @@
 """
-RINEX Navigation File Parser - Robust Version
+RINEX Navigation File Parser 
 --------------------------------------------
 Reads GPS/GLONASS/Galileo navigation files and extracts ephemeris data
 Supports RINEX 2.x, 3.x, 4.x formats
