@@ -1,5 +1,5 @@
 """
-main.py
+Module: main.py
 
 Description:
 Main script to run the satellite positioning pipeline.
