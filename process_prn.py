@@ -13,7 +13,7 @@ Author: F.Ahmadzade
 
 import pandas as pd
 import numpy as np
-from read_navigation import read_navigation_file, get_ephemeris_batch
+from read_navigation import read_navigation_file, get_ephemeris
 from generate_times import generate_times
 from interpolate_orbital_params import interpolate_orbital_params
 from compute_satellite_position import compute_satellite_position
@@ -29,7 +29,8 @@ def process_prn(nav_filepath, prn, obs_time=None, save_csv=True, show_plot=True)
         nav_filepath (str): Path to RINEX navigation file (*.21n)
         prn (str): PRN of GNSS satellite (e.g., 'G05')
         obs_time (pd.Timestamp or None): Observation time for ephemeris extraction.
-                                         If None, defaults to midpoint of file time range.
+                                         If None, defaults to midpoint of file time range,
+                                         then adjusted to closest ephemeris time.
         save_csv (bool): Whether to save output results to CSV file (default: True)
         show_plot (bool): Whether to display a 3D trajectory plot (default: True)
 
@@ -40,40 +41,38 @@ def process_prn(nav_filepath, prn, obs_time=None, save_csv=True, show_plot=True)
     # Load navigation data
     nav_data = read_navigation_file(nav_filepath, systems=prn[0])
 
-    # Determine default obs_time (midpoint)
+    if len(nav_data.time) == 0:
+        raise ValueError("Navigation data contains no time entries.")
+
+    # Determine default obs_time (midpoint) if not provided
     if obs_time is None:
         times = nav_data.time.values
-        if len(times) == 0:
-            raise ValueError("No valid times found in navigation data to use for obs_time.")
         obs_time = pd.Timestamp(times[len(times) // 2])
 
-    # Find closest ephemeris before or equal to obs_time for the given PRN
-    # Iterate backwards in time to find valid ephemeris
-    times_nav = nav_data.time.values
-    sat_nav = nav_data.sel(sv=prn, method='nearest')
+    # Select satellite navigation data exactly (no nearest method)
+    try:
+        sat_nav = nav_data.sel(sv=prn)
+    except KeyError:
+        print(f"Satellite PRN {prn} not found in navigation data.")
+        return None
 
-    # Find ephemeris time stamps for the satellite
+    # Extract ephemeris times for that satellite
     eph_times = pd.to_datetime(sat_nav.time.values)
 
-    # Find ephemeris nearest to obs_time within tolerance (e.g. 4 hours)
-    max_age_hours = 4
-    valid_eph_times = [t for t in eph_times if abs((t - obs_time).total_seconds()) <= max_age_hours * 3600]
-
-    if not valid_eph_times:
-        print(f"No ephemeris within {max_age_hours} hours of observation time {obs_time} for satellite {prn}.")
+    if len(eph_times) == 0:
+        print(f"No ephemeris times found for satellite {prn}.")
         return None
 
-    # Choose the ephemeris closest to obs_time
-    closest_eph_time = min(valid_eph_times, key=lambda t: abs((t - obs_time).total_seconds()))
+    # Find closest ephemeris time to requested obs_time
+    closest_eph_time = min(eph_times, key=lambda t: abs((t - obs_time).total_seconds()))
 
-    # Extract ephemeris at closest time (using get_ephemeris)
-    eph = None
-    try:
-        eph = get_ephemeris(nav_data, prn, closest_eph_time)
-    except Exception as e:
-        print(f"Error extracting ephemeris for {prn} at {closest_eph_time}: {e}")
-        return None
+    # Optionally warn if too far in time
+    age_hours = abs((closest_eph_time - obs_time).total_seconds()) / 3600.0
+    if age_hours > 4:
+        print(f"Warning: closest ephemeris for {prn} is {age_hours:.2f} hours away from requested observation time.")
 
+    # Extract ephemeris at closest time
+    eph = get_ephemeris(nav_data, prn, closest_eph_time)
     if eph is None:
         print(f"Ephemeris not found for PRN {prn} at time {closest_eph_time}. Computation aborted.")
         return None
@@ -81,10 +80,10 @@ def process_prn(nav_filepath, prn, obs_time=None, save_csv=True, show_plot=True)
     start_time = eph['eph_time']
     end_time = start_time + pd.Timedelta(hours=23, minutes=59, seconds=59)
 
-    # Generate time samples every 30 seconds
+    # Generate sample times at 30-second intervals
     times = generate_times(start_time, end_time, interval_sec=30)
 
-    # Clean ephemeris data into floats or NaN
+    # Clean ephemeris to floats or NaNs
     cleaned_ephemeris = {}
     for k, v in eph.items():
         try:
@@ -92,23 +91,23 @@ def process_prn(nav_filepath, prn, obs_time=None, save_csv=True, show_plot=True)
         except (TypeError, ValueError):
             cleaned_ephemeris[k] = np.nan
 
-    # Build DataFrame with ephemeris repeated for all times for interpolation
-    nav_df = pd.DataFrame({k: [v] * len(times) for k, v in cleaned_ephemeris.items()})
+    # Build DataFrame with repeated ephemeris for interpolation
+    nav_df = pd.DataFrame({k: [val] * len(times) for k, val in cleaned_ephemeris.items()})
     nav_df['time'] = pd.Series(times).values
     nav_df = nav_df.set_index('time').astype(float)
 
-    # Interpolate orbital parameters to all sample times
+    # Interpolate orbital parameters
     orbital_params = interpolate_orbital_params(nav_df, times)
 
-    # Compute relative time tk in seconds from first timepoint for navigation
+    # Compute relative time 'tk' in seconds from base time
     base_time = nav_df.index[0]
     tk_seconds = np.array([(t - base_time).total_seconds() for t in nav_df.index])
     orbital_params['tk'] = tk_seconds
 
-    # Compute satellite ECEF positions (X, Y, Z)
+    # Compute satellite ECEF positions
     positions = compute_satellite_position(orbital_params)
 
-    # Build output DataFrame
+    # Prepare output DataFrame
     df_out = pd.DataFrame({
         't': times,
         'x': positions['X'],
@@ -118,9 +117,9 @@ def process_prn(nav_filepath, prn, obs_time=None, save_csv=True, show_plot=True)
 
     # Save CSV if requested
     if save_csv:
-        out_filename = f'output_{prn}.csv'
-        save_to_csv(positions, out_filename, timestamps=pd.Series(times))
-        print(f"Output CSV saved to {out_filename}")
+        filename = f'output_{prn}.csv'
+        save_to_csv(positions, filename, timestamps=pd.Series(times))
+        print(f"Output CSV saved to {filename}")
 
     # Show 3D plot if requested
     if show_plot:
