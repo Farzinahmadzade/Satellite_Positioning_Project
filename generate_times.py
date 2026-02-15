@@ -10,7 +10,6 @@ Author: F.Ahmadzade
 
 import pandas as pd
 from typing import List
-from datetime import timedelta
 
 def generate_times(start_time: pd.Timestamp, 
                   end_time: pd.Timestamp, 
