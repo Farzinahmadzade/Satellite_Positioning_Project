@@ -13,116 +13,166 @@ Author: F.Ahmadzade
 
 import pandas as pd
 import numpy as np
+import warnings
+import matplotlib.pyplot as plt
+
+from datetime import timedelta
+from typing import Dict, Optional
 from read_navigation import read_navigation_file, get_ephemeris
 from generate_times import generate_times
-from interpolate_orbital_params import interpolate_orbital_params
 from compute_satellite_position import compute_satellite_position
-from save_to_csv import save_to_csv
-from plot_3d_path import plot_3d_path
+from mpl_toolkits.mplot3d import Axes3D
 
-
-def process_prn(nav_filepath, prn, obs_time=None, save_csv=True, show_plot=True):
-    """
-    Computes ECEF satellite positions for a given PRN using a RINEX navigation file.
-
-    Args:
-        nav_filepath (str): Path to RINEX navigation file (*.21n)
-        prn (str): PRN of GNSS satellite (e.g., 'G05')
-        obs_time (pd.Timestamp or None): Observation time for ephemeris extraction.
-                                         If None, defaults to midpoint of file time range,
-                                         then adjusted to closest ephemeris time.
-        save_csv (bool): Whether to save output results to CSV file (default: True)
-        show_plot (bool): Whether to display a 3D trajectory plot (default: True)
-
-    Returns:
-        pd.DataFrame or None: DataFrame with columns ['t', 'x', 'y', 'z'], or None if ephemeris not found.
-    """
-
-    # Load navigation data
+def process_prn(nav_filepath: str, prn: str, obs_time: Optional[pd.Timestamp] = None, 
+                interval_sec: int = 30, save_csv: bool = True, show_plot: bool = True) -> pd.DataFrame:
+    
+    # 1. Read navigation file
     nav_data = read_navigation_file(nav_filepath, systems=prn[0])
-
     if len(nav_data.time) == 0:
-        raise ValueError("Navigation data contains no time entries.")
-
-    # Determine default obs_time (midpoint) if not provided
+        raise ValueError(f"No navigation data found in {nav_filepath}")
+    
+    # 2. Determination of observation time
     if obs_time is None:
-        times = nav_data.time.values
-        obs_time = pd.Timestamp(times[len(times) // 2])
-
-    # Select satellite navigation data exactly (no nearest method)
+        times = pd.to_datetime(nav_data.time.values)
+        obs_time = times[len(times) // 2]
+    
+    # 3. Extraction of all satellite ephemeris
     try:
         sat_nav = nav_data.sel(sv=prn)
     except KeyError:
-        print(f"Satellite PRN {prn} not found in navigation data.")
-        return None
-
-    # Extract ephemeris times for that satellite
+        raise ValueError(f"PRN {prn} not found in navigation data")
+    
     eph_times = pd.to_datetime(sat_nav.time.values)
-
     if len(eph_times) == 0:
-        print(f"No ephemeris times found for satellite {prn}.")
-        return None
-
-    # Find closest ephemeris time to requested obs_time
-    closest_eph_time = min(eph_times, key=lambda t: abs((t - obs_time).total_seconds()))
-
-    # Optionally warn if too far in time
-    age_hours = abs((closest_eph_time - obs_time).total_seconds()) / 3600.0
-    if age_hours > 4:
-        print(f"Warning: closest ephemeris for {prn} is {age_hours:.2f} hours away from requested observation time.")
-
-    # Extract ephemeris at closest time
-    eph = get_ephemeris(nav_data, prn, closest_eph_time)
-    if eph is None:
-        print(f"Ephemeris not found for PRN {prn} at time {closest_eph_time}. Computation aborted.")
-        return None
-
-    start_time = eph['eph_time']
-    end_time = start_time + pd.Timedelta(hours=23, minutes=59, seconds=59)
-
-    # Generate sample times at 30-second intervals
-    times = generate_times(start_time, end_time, interval_sec=30)
-
-    # Clean ephemeris to floats or NaNs
-    cleaned_ephemeris = {}
-    for k, v in eph.items():
-        try:
-            cleaned_ephemeris[k] = float(v)
-        except (TypeError, ValueError):
-            cleaned_ephemeris[k] = np.nan
-
-    # Build DataFrame with repeated ephemeris for interpolation
-    nav_df = pd.DataFrame({k: [val] * len(times) for k, val in cleaned_ephemeris.items()})
-    nav_df['time'] = pd.Series(times).values
-    nav_df = nav_df.set_index('time').astype(float)
-
-    # Interpolate orbital parameters
-    orbital_params = interpolate_orbital_params(nav_df, times)
-
-    # Compute relative time 'tk' in seconds from base time
-    base_time = nav_df.index[0]
-    tk_seconds = np.array([(t - base_time).total_seconds() for t in nav_df.index])
+        raise ValueError(f"No ephemeris for {prn}")
+    
+    # 4. Choosing suitable ephemeris (±6 hours from obs_time)
+    time_window = timedelta(hours=6)
+    valid_eph = []
+    for eph_time in eph_times:
+        if abs((eph_time - obs_time).total_seconds()) <= time_window.total_seconds():
+            eph = get_ephemeris(nav_data, prn, eph_time)
+            if eph:
+                valid_eph.append({**eph, 'eph_time': eph_time})
+    
+    if not valid_eph:
+        raise ValueError(f"No valid ephemeris for {prn} within ±6h of {obs_time}")
+    
+    print(f"Found {len(valid_eph)} ephemeris sets for {prn}")
+    
+    # 5. Generate times for 24 hours
+    start_time = min(e.time for e in valid_eph)
+    end_time = start_time + timedelta(days=1)
+    times = generate_times(start_time, end_time, interval_sec)
+    
+    # 6. Multiple ephemeris interpolation (nearest neighbor + linear blending)
+    orbital_params = interpolate_multiple_eph(valid_eph, times)
+    
+    # 7. Calculate tk relative to each epoch ephemeris
+    tk_seconds = np.zeros(len(times))
+    for i, t in enumerate(times):
+        closest_eph_time = min(valid_eph, key=lambda e: abs((e['eph_time'] - t).total_seconds()))
+        tk_seconds[i] = (t - closest_eph_time['eph_time']).total_seconds()
+    
     orbital_params['tk'] = tk_seconds
-
-    # Compute satellite ECEF positions
+    orbital_params['tk'] = np.clip(orbital_params['tk'], -7200, 7200)  # ±2 hours max
+    
+    # 8. Calculation of positions
     positions = compute_satellite_position(orbital_params)
-
-    # Prepare output DataFrame
+    
+    # 9. Validation checks
+    validate_positions(positions, prn)
+    
+    # 10. Output DataFrame
     df_out = pd.DataFrame({
-        't': times,
-        'x': positions['X'],
-        'y': positions['Y'],
-        'z': positions['Z']
+        'time': times,
+        'x_ecef': positions['X'],
+        'y_ecef': positions['Y'], 
+        'z_ecef': positions['Z'],
+        'radius': positions.get('r', np.linalg.norm(np.stack([positions['X'], positions['Y'], positions['Z']]), axis=0))
     })
-
-    # Save CSV if requested
+    
+    # 11. Save CSV
     if save_csv:
-        filename = f'output_{prn}.csv'
-        save_to_csv(positions, filename, timestamps=pd.Series(times))
-        print(f"Output CSV saved to {filename}")
-
-    # Show 3D plot if requested
+        filename = f"trajectory_{prn}_{obs_time.strftime('%Y%m%d_%H%M')}.csv"
+        df_out.to_csv(filename, index=False)
+        print(f"✓ Saved: {filename}")
+    
+    # 12. 3D Plot
     if show_plot:
-        plot_3d_path(positions, title=f"Satellite {prn} 3D Trajectory")
-
+        plot_trajectory_3d(df_out, prn)
+    
     return df_out
+
+def interpolate_multiple_eph(ephemerides: list, times: list) -> Dict[str, np.ndarray]:
+    """Interpolation با blending چندین ephemeris"""
+    params = ['sqrtA', 'e', 'i0', 'omega', 'OMEGA', 'M0', 'delta_n', 'OMEGA_DOT', 'IDOT',
+              'Cuc', 'Cus', 'Crc', 'Crs', 'Cic', 'Cis']
+    
+    interpolated = {p: np.zeros(len(times)) for p in params}
+    
+    for i, t in enumerate(times):
+        weights = []
+        values = []
+        for eph in ephemerides:
+            dt = abs((eph['eph_time'] - t).total_seconds())
+            if dt <= 7200:  # 2 hours
+                weight = 1.0 / (1.0 + (dt / 3600.0)**2)
+                weights.append(weight)
+                for param in params:
+                    values.append(eph.get(param, 0.0))
+        
+        if weights:
+            total_weight = sum(weights)
+            for j, param in enumerate(params):
+                interpolated[param][i] = sum(w * values[j] for w, v in zip(weights, values)) / total_weight
+    
+    return interpolated
+
+def validate_positions(positions: Dict, prn: str):
+    """Validation of results"""
+    X, Y, Z = positions['X'], positions['Y'], positions['Z']
+    radius = np.sqrt(X**2 + Y**2 + Z**2)
+    
+    stats = {
+        'mean_radius_km': np.mean(radius)/1000,
+        'radius_std_km': np.std(radius)/1000,
+        'min_alt_km': np.min(radius)/1000,
+        'max_alt_km': np.max(radius)/1000
+    }
+    
+    print(f"Validation {prn}: R={stats['mean_radius_km']:.1f}±{stats['radius_std_km']:.1f}km")
+    
+    if not (25000 < stats['mean_radius_km'] < 27000):
+        warnings.warn("⚠️  Radius out of GPS range (25-27k km)")
+    
+    if stats['radius_std_km'] > 50:
+        warnings.warn("⚠️  High radius variation - check ephemeris quality")
+
+def plot_trajectory_3d(df: pd.DataFrame, prn: str):
+    """Draw a 3D trajectory"""
+    fig = plt.figure(figsize=(12, 9))
+    ax = fig.add_subplot(111, projection='3d')
+    
+    ax.plot(df['x_ecef']/1000, df['y_ecef']/1000, df['z_ecef']/1000, 
+            'b-', linewidth=2, label=f'{prn} trajectory')
+    ax.scatter(df['x_ecef'].iloc[0]/1000, df['y_ecef'].iloc[0]/1000, df['z_ecef'].iloc[0]/1000, 
+              c='green', s=100, label='Start')
+    ax.scatter(df['x_ecef'].iloc[-1]/1000, df['y_ecef'].iloc[-1]/1000, df['z_ecef'].iloc[-1]/1000, 
+              c='red', s=100, label='End')
+    
+    # Earth reference
+    u = np.linspace(0, 2*np.pi, 50)
+    v = np.linspace(0, np.pi, 50)
+    x_earth = 6371 * np.outer(np.cos(u), np.sin(v))
+    y_earth = 6371 * np.outer(np.sin(u), np.sin(v))
+    z_earth = 6371 * np.outer(np.ones(np.size(u)), np.cos(v))
+    ax.plot_surface(x_earth, y_earth, z_earth, alpha=0.3, color='lightblue')
+    
+    ax.set_xlabel('X (km)')
+    ax.set_ylabel('Y (km)')
+    ax.set_zlabel('Z (km)')
+    ax.legend()
+    ax.set_title(f'GNSS Satellite {prn} - 24hr ECEF Trajectory')
+    plt.tight_layout()
+    plt.show()
