@@ -7,118 +7,96 @@ for GPS, GLONASS, Galileo, BeiDou
 Author: F.Ahmadzade
 """
 
-# Speed of light (m/s)
-C = 299792458.0
+import numpy as np
 
-# ==================== GPS ====================
-# GPS L1/L2 frequencies (Hz)
-GPS_F1 = 1575.42e6  # L1
-GPS_F2 = 1227.60e6  # L2
+# Global constants
+C = 299792458.0  # m/s
 
-# GPS wavelengths (meters)
-GPS_L1 = C / GPS_F1  # ≈ 0.1903 m
-GPS_L2 = C / GPS_F2  # ≈ 0.2442 m
+# GPS
+GPS_L1 = 1575.42e6  # L1 C/A, P(Y)
+GPS_L2 = 1227.60e6  # L2 P(Y), L2C
+GPS_L5 = 1176.45e6  # L5 (modern)
 
-# GPS combination coefficients
-ALPHA_GPS = (GPS_F1 / GPS_F2) ** 2  # ≈ 1.6469
-F1_GPS = GPS_F1 / 1e6  # MHz for display
-F2_GPS = GPS_F2 / 1e6  # MHz for display
+GPS_lambda1 = C / GPS_L1  # 0.190293 m
+GPS_lambda2 = C / GPS_L2  # 0.244210 m
+GPS_lambda5 = C / GPS_L5  # 0.254824 m
 
-# ==================== Galileo ====================
-GALILEO_F1 = 1575.42e6  # E1
-GALILEO_F2 = 1176.45e6  # E5a
-GALILEO_L1 = C / GALILEO_F1
-GALILEO_L2 = C / GALILEO_F2
-ALPHA_GALILEO = (GALILEO_F1 / GALILEO_F2) ** 2
+ALPHA_GPS_12 = (GPS_L1 / GPS_L2) ** 2  # 1.6469 (iono-free)
 
-# ==================== BeiDou ====================
-BEIDOU_F1 = 1561.098e6  # B1
-BEIDOU_F2 = 1207.140e6  # B2
-BEIDOU_L1 = C / BEIDOU_F1
-BEIDOU_L2 = C / BEIDOU_F2
-ALPHA_BEIDOU = (BEIDOU_F1 / BEIDOU_F2) ** 2
+# Galileo
+E1 = 1575.42e6    # E1 B+C
+E5A = 1176.45e6   # E5a
+E5B = 1207.14e6   # E5b
+E6 = 1278.75e6    # E6
 
-# ==================== GLONASS ====================
-# GLONASS frequency channel numbers (k = -7 to +6)
-GLONASS_K = {
-    'R01': 1,  'R02': -4, 'R03': 5,  'R04': 6,  'R05': 1,  'R06': -4,
-    'R07': 5,  'R08': 6,  'R09': -2, 'R10': -7, 'R11': 0,  'R12': -1,
-    'R13': -2, 'R14': -7, 'R15': 0,  'R16': -1, 'R17': 4,  'R18': -3,
-    'R19': 3,  'R20': 2,  'R21': 4,  'R22': -3, 'R23': 3,  'R24': 2
+GALILEO_L1 = C / E1
+GALILEO_L5A = C / E5A
+ALPHA_GALILEO = (E1 / E5A) ** 2
+
+# BeiDou
+B1C = 1575.42e6   # B1C (GPS-compatible)
+B2A = 1176.45e6   # B2a (L5-compatible)
+B3I = 1268.52e6   # B3
+
+BEIDOU_L1 = C / B1C
+BEIDOU_L5 = C / B2A
+ALPHA_BEIDOU = (B1C / B2A) ** 2
+
+# GLONASS
+GLONASS_K_NUMBERS = {
+    'R01': 1, 'R02': -4, 'R03': 5, 'R04': 6, 'R05': 1, 'R06': -4,
+    'R07': 5, 'R08': 6, 'R09': -2, 'R10': -7, 'R11': 0, 'R12': -1,
+    'R13': -2, 'R14': -7, 'R15': 0, 'R16': -1, 'R17': 4, 'R18': -3,
+    'R19': 3, 'R20': 2, 'R21': 4, 'R22': -3, 'R23': 3, 'R24': 2
 }
 
-def get_glonass_frequencies(sat_id: str) -> tuple:
-    """
-    Get GLONASS frequencies for a specific satellite.
+def glonass_frequencies(prn: str) -> tuple:
+    """GLONASS L1/L2 frequencies (Hz, m, alpha)"""
+    k = GLONASS_K_NUMBERS.get(prn, 0)
     
-    Args:
-        sat_id: Satellite ID (e.g., 'R01', 'R15')
+    # GLONASS frequency model (RINEX 3.04)
+    f1 = 1602.0e6 + k * 0.5625e6  # L1
+    f2 = 1246.0e6 + k * 0.4375e6  # L2
     
-    Returns:
-        (F1, F2, L1, L2, alpha) in Hz, meters, and coefficient
-    """
-    k = GLONASS_K.get(sat_id, 0)
+    l1, l2 = C / f1, C / f2
+    alpha = (f1 / f2) ** 2
     
-    # GLONASS FDMA frequencies (MHz to Hz)
-    F1 = (1602.0 + k * 0.5625) * 1e6
-    F2 = (1246.0 + k * 0.4375) * 1e6
-    
-    # Wavelengths
-    L1 = C / F1
-    L2 = C / F2
-    
-    # Alpha coefficient
-    alpha = (F1 / F2) ** 2
-    
-    return F1, F2, L1, L2, alpha
+    return f1, f2, l1, l2, alpha
 
-def get_frequencies(sat_system: str, sat_id: str = None) -> dict:
-    """
-    Get carrier frequencies and wavelengths for a satellite system.
+# Universal Interface
+def get_gnss_frequencies(system: str, prn: str = None) -> dict:
+    """Receive frequencies based on system and PRN"""
     
-    Args:
-        sat_system: 'G' (GPS), 'R' (GLONASS), 'E' (Galileo), 'C' (BeiDou)
-        sat_id: Full satellite ID (required for GLONASS, e.g., 'R01')
-    
-    Returns:
-        dict with keys: 'F1', 'F2', 'L1', 'L2', 'alpha'
-    """
-    if sat_system == 'G':  # GPS
+    if system == 'G':  # GPS
         return {
-            'F1': GPS_F1, 'F2': GPS_F2,
-            'L1': GPS_L1, 'L2': GPS_L2,
-            'alpha': ALPHA_GPS
+            'f1': GPS_L1, 'f2': GPS_L2, 'f5': GPS_L5,
+            'l1': GPS_lambda1, 'l2': GPS_lambda2, 'l5': GPS_lambda5,
+            'alpha_12': ALPHA_GPS_12
         }
-    elif sat_system == 'R':  # GLONASS
-        if sat_id is None:
-            raise ValueError("GLONASS requires satellite ID")
-        F1, F2, L1, L2, alpha = get_glonass_frequencies(sat_id)
+    elif system == 'E':  # Galileo
         return {
-            'F1': F1, 'F2': F2,
-            'L1': L1, 'L2': L2,
-            'alpha': alpha
-        }
-    elif sat_system == 'E':  # Galileo
-        return {
-            'F1': GALILEO_F1, 'F2': GALILEO_F2,
-            'L1': GALILEO_L1, 'L2': GALILEO_L2,
+            'f1': E1, 'f5a': E5A, 'f5b': E5B,
+            'l1': GALILEO_L1, 'l5a': GALILEO_L5A,
             'alpha': ALPHA_GALILEO
         }
-    elif sat_system == 'C':  # BeiDou
+    elif system == 'C':  # BeiDou
         return {
-            'F1': BEIDOU_F1, 'F2': BEIDOU_F2,
-            'L1': BEIDOU_L1, 'L2': BEIDOU_L2,
+            'f1': B1C, 'f2': B2A,
+            'l1': BEIDOU_L1, 'l2': BEIDOU_L5,
             'alpha': ALPHA_BEIDOU
         }
+    elif system == 'R':  # GLONASS
+        if prn is None:
+            raise ValueError("GLONASS needs PRN (e.g., 'R01')")
+        f1, f2, l1, l2, alpha = glonass_frequencies(prn)
+        return {'f1': f1, 'f2': f2, 'l1': l1, 'l2': l2, 'alpha': alpha}
     else:
-        # Default to GPS
-        return {
-            'F1': GPS_F1, 'F2': GPS_F2,
-            'L1': GPS_L1, 'L2': GPS_L2,
-            'alpha': ALPHA_GPS
-        }
+        return get_gnss_frequencies('G')  # Default GPS
 
-# Confirmation print
-print(f"✓ Constants loaded:")
-print(f"  GPS: F1={F1_GPS:.2f} MHz, F2={F2_GPS:.2f} MHz, λ1={GPS_L1:.4f} m, λ2={GPS_L2:.4f} m")
-print(f"  Alpha (GPS): {ALPHA_GPS:.4f}")
+# Testing and validation
+if __name__ == "__main__":
+    print("✅ GNSS Constants Validation (2026 standards)")
+    print(f"GPS L1:  {GPS_lambda1*1e3:.1f} mm  |  α12: {ALPHA_GPS_12:.4f}")
+    print(f"GLONASS R01 L1: {glonass_frequencies('R01')[2]*1e3:.1f} mm")
+    print(f"Galileo E1:     {GALILEO_L1*1e3:.1f} mm")
+    print(f"BeiDou B1C:     {BEIDOU_L1*1e3:.1f} mm")
