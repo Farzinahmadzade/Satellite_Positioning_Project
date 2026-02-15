@@ -1,5 +1,5 @@
 """
-GNSS Constants and Frequencies
+Module: GNSS Constants and Frequencies
 ------------------------------
 Defines carrier frequencies, wavelengths, and combination coefficients
 for GPS, GLONASS, Galileo, BeiDou
