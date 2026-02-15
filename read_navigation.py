@@ -1,19 +1,21 @@
 """
-read_navigation.py - نسخه کامل تصحیح‌شده (نمره 100%)
-RINEX Navigation File Parser - GPS/GLONASS/Galileo/BeiDou (RINEX 2.x/3.x/4.x)
-سازگار با compute_satellite_position pipeline
+Module: read_navigation.py
+
+Description:
+Loads RINEX Navigation files and extracts satellite ephemeris
+parameters required for ECEF position computation.
+
+Author: F. Ahmadzade
 """
 
 import georinex as gr
 import pandas as pd
 import xarray as xr
-from datetime import datetime, timedelta
 from typing import Dict, Optional, List, Union
 import numpy as np
 import os
-import warnings
 
-# Field mapping کامل - سازگار با compute_satellite_position
+# Field mapping
 FIELD_MAPPING = {
     # Core Keplerian parameters (compute_satellite_position needs)
     'sqrtA': ['sqrtA', 'sqrtSemiMajorAxis', 'SqrA'],
@@ -27,7 +29,7 @@ FIELD_MAPPING = {
     'IDOT': ['IDOT', 'Idot', 'InclinationRate'],
     'tk': ['toe', 'Toe', 'TimeEph'],  # Time from ephemeris epoch
     
-    # Harmonic corrections (مهم برای دقت sub-meter)
+    # Harmonic corrections
     'Cuc': ['Cuc', 'CUC'],
     'Cus': ['Cus', 'CUS'],
     'Crc': ['Crc', 'CRC'],
@@ -48,7 +50,7 @@ FIELD_MAPPING = {
 }
 
 def to_float(val: Union[xr.DataArray, np.ndarray, float, str]) -> Optional[float]:
-    """تبدیل ایمن xarray/numpy به float"""
+    """Safe conversion of xarray/numpy to float"""
     try:
         if hasattr(val, 'values'): 
             v = val.values
@@ -69,7 +71,7 @@ def to_float(val: Union[xr.DataArray, np.ndarray, float, str]) -> Optional[float
         return None
 
 def get_field_value(eph_data: xr.Dataset, field_name: str) -> Optional[float]:
-    """استخراج فیلد با fallback mapping"""
+    """Field extraction with fallback mapping"""
     possible_names = FIELD_MAPPING.get(field_name, [field_name])
     
     for name in possible_names:
@@ -85,14 +87,14 @@ def get_field_value(eph_data: xr.Dataset, field_name: str) -> Optional[float]:
 def read_navigation_file(nav_file_path: str, 
                         systems: Optional[str] = None) -> xr.Dataset:
     """
-    خواندن RINEX navigation file (استاندارد IGS)
+    Reading RINEX navigation file (IGS standard)
     
     Args:
         nav_file_path: *.21n, *.nav, *.rnx
-        systems: 'G', 'R', 'E', 'C', یا 'GRE' (None=all)
+        systems: 'G', 'R', 'E', 'C', or 'GRE' (None=all)
     
     Returns:
-        xarray.Dataset آماده برای get_ephemeris
+        xarray.Dataset ready for get_ephemeris
     """
     if not os.path.exists(nav_file_path):
         raise FileNotFoundError(f"Navigation file not found: {nav_file_path}")
@@ -103,7 +105,7 @@ def read_navigation_file(nav_file_path: str,
     print(f"📁 File: {os.path.basename(nav_file_path)}")
     
     try:
-        # georinex با selective loading (سرعت بالا)
+        # Georinex with selective loading
         nav = gr.load(nav_file_path, use=systems)
         
         satellites = nav.sv.values
@@ -128,9 +130,7 @@ def get_ephemeris(nav_data: xr.Dataset,
                  max_age_hours: float = 4.0,
                  verbose: bool = False) -> Optional[Dict]:
     """
-    استخراج ephemeris برای compute_satellite_position
-    
-    **خروجی مستقیماً سازگار با pipeline شما**
+    Extract ephemeris for compute_satellite_position    
     """
     try:
         if sat_id not in nav_data.sv.values:
@@ -149,7 +149,7 @@ def get_ephemeris(nav_data: xr.Dataset,
         if age_hours > max_age_hours and verbose:
             print(f"⚠️  {sat_id}: ephemeris age {age_hours:.1f}h > {max_age_hours}h")
         
-        # سازگار با compute_satellite_position parameters
+        # Compatible with compute_satellite_position parameters
         ephemeris = {
             'sat_id': sat_id,
             'system': sat_id[0],
@@ -158,7 +158,7 @@ def get_ephemeris(nav_data: xr.Dataset,
             'age_hours': age_hours,
         }
         
-        # Core Keplerian + harmonics (دقیقاً آنچه compute_satellite_position نیاز داره)
+        # Core Keplerian + harmonics
         core_params = ['sqrtA', 'e', 'i0', 'omega', 'OMEGA', 'M0', 'delta_n', 
                       'OMEGA_DOT', 'IDOT', 'tk', 'Cuc', 'Cus', 'Crc', 'Crs', 'Cic', 'Cis']
         
@@ -194,7 +194,7 @@ def get_ephemeris_batch(nav_data: xr.Dataset, sat_list: List[str],
             for sat in sat_list if (eph := get_ephemeris(nav_data, sat, obs_time, max_age_hours))}
 
 def print_ephemeris_summary(eph_dict: Dict[str, Dict]):
-    """جدول خلاصه استادپسند"""
+    """Summary table"""
     if not eph_dict:
         print("❌ No ephemeris data")
         return
@@ -215,7 +215,7 @@ def print_ephemeris_summary(eph_dict: Dict[str, Dict]):
     print(pd.DataFrame(summary).to_string(index=False))
     print(f"{'='*80}\n")
 
-# تست بدون وابستگی فایل
+# Testing without file dependencies
 if __name__ == "__main__":
     print("🚀 read_navigation.py - TEST MODE")
     print("✅ Module ready for Satellite_Positioning_Project pipeline!")
@@ -227,4 +227,4 @@ if __name__ == "__main__":
     # Mock test
     mock_nav = {'sv': ['G01']}
     print("\n✅ All FIELD_MAPPING synced with compute_satellite_position.py")
-    print("🎯 Assignment-ready! نمره کامل!")
+    print("🎯 Assignment-ready!")
