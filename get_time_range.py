@@ -10,48 +10,57 @@ Author: F.Ahmadzade
 
 from typing import Dict, Tuple
 import pandas as pd
+from warnings import warn
 
-def get_time_range(sat_data_dict: Dict[str, pd.DataFrame], prn: str) -> Tuple[pd.Timestamp, pd.Timestamp]:
+def get_time_range(sat_data_dict: Dict[str, pd.DataFrame], 
+                  prn: str, 
+                  time_col: str = 'time') -> Tuple[pd.Timestamp, pd.Timestamp]:
     """
-    Get the start and end times for a given satellite PRN from observation data.
-
+    Extracting the time interval of satellite observations from RINEX data
+    
     Args:
-        sat_data_dict (Dict[str, pd.DataFrame]): Dictionary mapping satellite IDs to their observation DataFrames.
-        prn (str): Satellite identifier (e.g. 'G05' or 'R12').
-
+        sat_data_dict: Dict[PRN, DataFrame] from read_rinex
+        prn: 'G05', 'R12', etc.
+        time_col: time column name (default: 'time')
+    
     Returns:
-        Tuple[pd.Timestamp, pd.Timestamp]: Start and end timestamps of observations.
-
+        (start_time, end_time)
+    
     Raises:
-        KeyError: If the specified PRN is not found in the data dictionary.
-        ValueError: If the DataFrame for the PRN is empty.
+        KeyError: PRN not found
+        ValueError: Empty data or no time column
     """
     if prn not in sat_data_dict:
-        raise KeyError(f"Satellite PRN '{prn}' not found in the observation data.")
-
+        raise KeyError(f"PRN '{prn}' not found in {list(sat_data_dict.keys())}")
+    
     df = sat_data_dict[prn]
     if df.empty:
-        raise ValueError(f"No observation data available for satellite PRN '{prn}'.")
-
-    start_time = df['time'].min()
-    end_time = df['time'].max()
+        raise ValueError(f"Empty DataFrame for PRN '{prn}'")
+    
+    if time_col not in df.columns:
+        raise ValueError(f"Time column '{time_col}' not in DataFrame columns")
+    
+    # GNSS-specific: ensure Timestamp format
+    time_series = pd.to_datetime(df[time_col])
+    start_time = time_series.min()
+    end_time = time_series.max()
+    
+    duration = (end_time - start_time).total_seconds() / 3600
+    if duration > 48:
+        warn(f"⚠️ Long session {duration:.1f}h for {prn} - check data validity")
+    
+    print(f"✓ {prn}: {len(df)} epochs, {duration:.1f}h ({start_time} → {end_time})")
+    
     return start_time, end_time
 
-
+# Real-world GNSS test
 if __name__ == "__main__":
-    # Example usage (replace sat_dict with actual output from read_rinex)
-    import pandas as pd
-    from datetime import datetime
-
-    # Mock example for testing
-    mock_data = {
+    mock_rinex = {
         'G05': pd.DataFrame({
-            'time': pd.date_range(start='2025-11-24 00:00:00', periods=5, freq='30S'),
-            'L1': [1, 2, 3, 4, 5],
-            'L2': [1, 2, 3, 4, 5],
-            'C1': [1, 2, 3, 4, 5],
-            'C2': [1, 2, 3, 4, 5],
+            'time': pd.date_range('2026-02-13 09:00', periods=7200, freq='30S'),  # 24hr
+            'L1': np.random.randn(7200), 'L2': np.random.randn(7200)
         })
     }
-    start, end = get_time_range(mock_data, 'G05')
-    print(f"Start time: {start}, End time: {end}")
+    
+    start, end = get_time_range(mock_rinex, 'G05')
+    print(f"✅ Result: {start} → {end} ({(end-start).total_seconds()/3600:.1f}h)")
